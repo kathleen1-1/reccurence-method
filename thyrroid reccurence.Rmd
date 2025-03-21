@@ -1,15 +1,4 @@
----
-title: "datmin uas tutor"
-author: "Aurelia, Crystalin, & Kathleen"
-date: "2024-11-13"
-output: html_document
----
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
-# TITLE
-Load libraries yang dibutuhkan
 ```{r}
 library(rpart)
 library(rpart.plot)
@@ -20,16 +9,16 @@ library(ggplot2)
 library(dplyr)
 library(gridExtra)
 ```
-Kita akan menggunakan data Thyroid. Berikut data akan di-load terlebih dahulu
+
 ```{r}
 thyroid=read.csv("thyroid_diff.csv")
 summary(thyroid)
 ```
-Cek structure data
+
 ```{r}
 str(thyroid)
 ```
-Set categorical variabel jadi factor
+
 ```{r}
 thyroid$Gender <- factor(thyroid$Gender)
 thyroid$Smoking <- factor(thyroid$Smoking)
@@ -48,18 +37,14 @@ thyroid$Stage <- factor(thyroid$Stage)
 thyroid$Response <- factor(thyroid$Response)
 thyroid$Recurred <- factor(thyroid$Recurred)
 ```
-cek lagi struktur data
+
 ```{r}
 str(thyroid)
 ```
-Semua categorical data sudah diubah menjadi factor
-
-cek missing data
 ```{r}
 sum(is.na(thyroid)) 
 ```
-Step 1). Pemilihan data
-Kita akan memilih columns yang dibutuhkan untuk prediksi
+
 ```{r}
 vnames=c("Age","Gender","Smoking","Hx.Smoking","Hx.Radiothreapy", 
          "Thyroid.Function", "Physical.Examination", "Adenopathy", "Pathology", 
@@ -67,9 +52,6 @@ vnames=c("Age","Gender","Smoking","Hx.Smoking","Hx.Radiothreapy",
 mydat=thyroid
 mydat2=mydat[,vnames]
 ```
-
-Step 2). Split data menjadi 
-80% training, 20% testing
 ```{r}
 id=sample(1:nrow(mydat2), size= floor(nrow(mydat2)*0.80))
 traindat=mydat2[id,]
@@ -204,7 +186,7 @@ RRRN <- ggplot(traindat, aes(x = Response, fill = Recurred)) +
 RRRN
 ```
 
-#### Combine semua plot
+#### Combine all plot
 ```{r}
 grid.arrange(R,p1, p2, p3, p4, p5, RNA, RAR, RRRN, nrow = 3, ncol=3)
 ```
@@ -381,10 +363,9 @@ confusion_matrix_plot <- ggplot(conf_matrix_df, aes(x = Predicted, y = Actual, f
 # Print the confusion matrix plot
 print(confusion_matrix_plot)
 ```
-accuracy 94%
+
 ## Random Forest
 
-Kita akan mencoba menggunakan random forest
 ```{r}
 set.seed(123)
 forest <- randomForest(Recurred~., data= traindat, proximity= TRUE ) #proximity= TRUE untuk return proximity matrix. digunakan untuk cluster samples
@@ -392,7 +373,6 @@ forest
 plot(forest)
 ```
 
-Kita akan melihat apakah 500 trees cukup untuk classification optimal dengan meng-plot error rates
 ```{r}
 oob.error.data <- data.frame(
   Trees= rep(1:nrow(forest$err.rate), times=3),
@@ -404,19 +384,12 @@ oob.error.data <- data.frame(
 
 ggplot(data= oob.error.data, aes(x=Trees, y= Error)) + geom_line(aes(color= Type))
 ```
-Garis biru menunjukkan error rate saat mengklasifikasi "Yes"
-Garis Hijau menunjukkan overall OOB error rate
-Garis merah menunjukkan error rate saat mengklasifikasi "No"
-Kita bisa melihat bahwa error rate turun saat Trees semakin banyak
 
-Mari kita cek apakah kita butuh lebih banyak Trees
 ```{r}
 forestcek <- randomForest(Recurred~., data= traindat, ntree=1000, proximity= TRUE )
 forestcek
 ```
-Terlihat bahwa menambah Tree tidak terlalu membantu karena OOB error rate tetap sama 3.27% dan confusion matrix lebih kurang tetap sama.
 
-Kita juga bisa meng-plot error rate seperti sebelumnya
 ```{r}
 oob.error.data2 <- data.frame(
   Trees2= rep(1:nrow(forestcek$err.rate), times=3),
@@ -428,12 +401,7 @@ oob.error.data2 <- data.frame(
 
 ggplot(data= oob.error.data2, aes(x=Trees2, y= Error2)) + geom_line(aes(color= Type2))
 ```
-Terlihat bahwa error rate mulai stabil setelah 500 Trees. Dengan melakukan plot grafik error diatas kita jadi tau bahwa 500 Trees sudah cukup menambahkan lagi tidak akan ada efek.
 
-Sekarang kita akan cek jumlah variabel yang optimal pada setiap internal node dalam tree
-Pertama kita membuat vektor kosong yang memuat 10 value
-Lalu membuat loop yang mengetes setiap variabel in every step
-Kita akan mengetes n variabel in every step
 ```{r}
 oob.values <- vector(length= 10)
 for (i in 1:10) {
@@ -442,9 +410,7 @@ for (i in 1:10) {
 }
 oob.values
 ```
-Terlihat bahwa value ke-4 yaitu mtry=4 memiliki error rate terkecil. Artinya default sudah menggunakan jumlah var yang optimal
 
-Terakhir kita akan menggunakan random forest untuk membuat MDS plot dengan samples, ini akan menunjukkan bagaimana mereka related satu sama lain
 ```{r}
 distance.matrix <- dist(1-forest$proximity)
 mds.stuff <- cmdscale(distance.matrix, eig= TRUE, x.ret = TRUE)
@@ -463,22 +429,18 @@ ggplot(data= mds.data, aes(x=X, y=Y, label= Sample))+
   ylab(paste("MDS2 -", mds.var.per[2], "%", sep=""))+
   ggtitle("MDS plot using(1 - Random Forest Proximities)")
 ```
-Selanjutnya, kita akan melakukan prediksi pada testdata
+
 ```{r}
 predictions2 <- predict(forest, newdata= testdat, type = "class")
 confusion_matrix2 <- table(testdat$Recurred, predictions2)
 confusion_matrix2
 ```
-Matrix prediction vs actual menunjukkan bahwa prediksi banyak yang benar
 
-Untuk mengevaluasi model random forest kita lebih lanjut, kita akan menghitung akurasi
 ```{r}
 accuracy2 <- sum(diag(confusion_matrix2)) / sum(confusion_matrix2)
 accuracy2
 ```
-Accuracy cukup tinggi sehingga model random forest sudah sangat baik dalam forecasting 
-Additionally
-Kita bisa melihat variabel mana saja yang paling berpengaruh
+
 ```{r}
 var.imp <- importance(forest)
 var.imp
@@ -503,7 +465,6 @@ ggplot(var.imp.df, aes(x = reorder(Variabel, Importance), y = Importance)) +
   theme_minimal()
 
 ```
-Terlihat variabel paling berpengaruh adalah "Risk", diikuti oleh "Hx.Radiothreapy", "Hx.Smoking", "Gender", dst... 
 
 
 Bayes
