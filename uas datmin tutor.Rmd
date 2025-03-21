@@ -1,0 +1,587 @@
+---
+title: "datmin uas tutor"
+author: "Aurelia, Crystalin, & Kathleen"
+date: "2024-11-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# TITLE
+Load libraries yang dibutuhkan
+```{r}
+library(rpart)
+library(rpart.plot)
+library(caret)
+library(pROC)
+library(randomForest) #for randm forest
+library(ggplot2)
+library(dplyr)
+library(gridExtra)
+```
+Kita akan menggunakan data Thyroid. Berikut data akan di-load terlebih dahulu
+```{r}
+thyroid=read.csv("thyroid_diff.csv")
+summary(thyroid)
+```
+Cek structure data
+```{r}
+str(thyroid)
+```
+Set categorical variabel jadi factor
+```{r}
+thyroid$Gender <- factor(thyroid$Gender)
+thyroid$Smoking <- factor(thyroid$Smoking)
+thyroid$Hx.Smoking <- factor(thyroid$Hx.Smoking)
+thyroid$Hx.Radiothreapy <- factor(thyroid$Hx.Radiothreapy)
+thyroid$Thyroid.Function <- factor(thyroid$Thyroid.Function)
+thyroid$Physical.Examination <- factor(thyroid$Physical.Examination)
+thyroid$Adenopathy <- factor(thyroid$Adenopathy)
+thyroid$Pathology <- factor(thyroid$Pathology)
+thyroid$Focality <- factor(thyroid$Focality)
+thyroid$Risk <- factor(thyroid$Risk)
+thyroid$T <- factor(thyroid$T)
+thyroid$N <- factor(thyroid$N)
+thyroid$M <- factor(thyroid$M)
+thyroid$Stage <- factor(thyroid$Stage)
+thyroid$Response <- factor(thyroid$Response)
+thyroid$Recurred <- factor(thyroid$Recurred)
+```
+cek lagi struktur data
+```{r}
+str(thyroid)
+```
+Semua categorical data sudah diubah menjadi factor
+
+cek missing data
+```{r}
+sum(is.na(thyroid)) 
+```
+Step 1). Pemilihan data
+Kita akan memilih columns yang dibutuhkan untuk prediksi
+```{r}
+vnames=c("Age","Gender","Smoking","Hx.Smoking","Hx.Radiothreapy", 
+         "Thyroid.Function", "Physical.Examination", "Adenopathy", "Pathology", 
+         "Focality", "Risk", "T", "N", "M", "Stage", "Response","Recurred")
+mydat=thyroid
+mydat2=mydat[,vnames]
+```
+
+Step 2). Split data menjadi 
+80% training, 20% testing
+```{r}
+id=sample(1:nrow(mydat2), size= floor(nrow(mydat2)*0.80))
+traindat=mydat2[id,]
+testdat=mydat2[-id,]
+library(ggplot2)
+ggplot(traindat, aes(x = Recurred)) + geom_bar()
+```
+## EDA
+
+### REcurrence dist
+```{r}
+R <- ggplot(traindat, aes(x = Recurred, fill = Recurred)) +
+  geom_bar() +
+  theme_minimal() +
+  ggtitle("Recurrence Distribution") +
+  xlab("Recurred (Yes/No)") +
+  ylab("Count") +
+  scale_fill_manual(values = c("skyblue", "salmon")) +
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 10),
+    legend.position = "none"
+  )
+R
+```
+### Age Distribution
+```{r}
+p1 <- ggplot(traindat, aes(x = Age)) +
+  geom_histogram(binwidth = 5, fill = "steelblue", color = "black") +
+  theme_minimal() +
+  ggtitle("Age Distribution") +
+  xlab("Age") +
+  ylab("Frequency")
+p1
+```
+
+### Gender Distribution
+```{r}
+p2 <- ggplot(traindat, aes(x = Gender, fill = Gender)) +
+  geom_bar() +
+  theme_minimal() +
+  ggtitle("Gender Distribution") +
+  xlab("Gender") +
+  ylab("Count")
+p2
+```
+## Recurred vs Risk
+```{r}
+RR <- ggplot(traindat, aes(x = Risk, fill = Recurred)) +
+  geom_bar(position = "fill") +
+  theme_minimal() +
+  ggtitle("Recurrence vs. Risk") +
+  xlab("Risk") +
+  ylab("Proportion") +
+  scale_fill_manual(values = c("skyblue", "salmon"))
+RR
+```
+
+## Smoking history and risk
+```{r}
+p3 <- ggplot(traindat, aes(x = Hx.Smoking, fill = Risk)) +
+  geom_bar(position = "fill") +
+  theme_minimal() +
+  ggtitle("Smoking History vs. Risk") +
+  xlab("Smoking History") +
+  ylab("Proportion") +
+  scale_fill_brewer(palette = "Set3")
+p3
+```
+
+### Thyroid Stages
+```{r}
+p4 <- ggplot(traindat, aes(x = Stage, fill = Thyroid.Function)) +
+  geom_bar(position = "dodge") +
+  theme_minimal() +
+  ggtitle("Thyroid Function by Stage") +
+  xlab("Stage") +
+  ylab("Count") +
+  scale_fill_brewer(palette = "Pastel1")
+p4
+```
+
+### Recurrence by Response
+```{r}
+p5 <- ggplot(traindat, aes(x = Response, fill = Recurred)) +
+  geom_bar(position = "fill") +
+  theme_minimal() +
+  ggtitle("Recurrence by Response") +
+  xlab("Response") +
+  ylab("Proportion") +
+  scale_fill_manual(values = c("skyblue", "salmon"))
+p5
+```
+Terlihat orang yang memiliki excellent response, penyakit tiroid lebih banyak tidak kambuh
+
+### Recurred vs N and Adenopathy
+```{r}
+RNA <- ggplot(traindat, aes(x = N, fill = Recurred)) +
+  geom_bar(position = "fill") +
+  facet_wrap(~Adenopathy) +
+  theme_minimal() +
+  ggtitle("Recurrence by N Stage and Adenopathy") +
+  xlab("N Stage") +
+  ylab("Proportion") +
+  scale_fill_manual(values = c("skyblue", "salmon"))
+RNA
+```
+
+### Recurred vs age and risk
+```{r}
+RAR <- ggplot(traindat, aes(x = Age, y = Risk, color = Recurred)) +
+  geom_jitter(alpha = 0.7) +
+  theme_minimal() +
+  ggtitle("Recurrence by Age and Risk") +
+  xlab("Age") +
+  ylab("Risk") +
+  scale_color_manual(values = c("darkgreen", "red"))
+RAR
+```
+
+### Recurred vs Response, Risk, and N
+```{r}
+RRRN <- ggplot(traindat, aes(x = Response, fill = Recurred)) +
+  geom_bar(position = "dodge") +
+  facet_grid(Risk ~ N) +
+  theme_minimal() +
+  ggtitle("Recurrence by Response, Risk, and N") +
+  xlab("Response") +
+  ylab("Count") +
+  scale_fill_manual(values = c("skyblue", "salmon"))
+RRRN
+```
+
+#### Combine semua plot
+```{r}
+grid.arrange(R,p1, p2, p3, p4, p5, RNA, RAR, RRRN, nrow = 3, ncol=3)
+```
+chi square table
+```{r}
+# Load necessary libraries
+library(readr)
+library(ggplot2)
+library(tidyr)
+
+# Load the dataset
+thyroid_diff <- read_csv("thyroid_diff.csv")
+
+# Define a function to perform chi-square test and plot histogram
+plot_chisquare_histogram <- function(data, variable1, variable2) {
+  # Create a contingency table
+  contingency_table <- table(data[[variable1]], data[[variable2]])
+  
+  # Perform chi-square test
+  chisq_test <- chisq.test(contingency_table)
+  
+  # Extract observed and expected frequencies
+  observed <- as.vector(chisq_test$observed)
+  expected <- as.vector(chisq_test$expected)
+  
+  # Create a dataframe for plotting
+  histogram_data <- data.frame(
+    Category = rep(1:length(observed), 2),  # Each category (1 to n) repeated twice
+    Frequency = c(observed, expected),
+    Type = rep(c("Observed", "Expected"), each = length(observed))
+  )
+  
+  # Create the histogram
+  p <- ggplot(histogram_data, aes(x = factor(Category), y = Frequency, fill = Type)) +
+    geom_bar(stat = "identity", position = "dodge", color = "black") +
+    scale_fill_manual(values = c("skyblue", "orange")) +
+    labs(
+      title = paste("Observed vs Expected Frequencies for", variable1, "and", variable2),
+      x = "Category",
+      y = "Frequency",
+      fill = "Type"
+    ) +
+    theme_minimal()
+  
+  return(p)
+}
+
+# Iterate through all possible pairs of variables
+for (var1 in colnames(thyroid_diff)) {
+  for (var2 in colnames(thyroid_diff)) {
+    if (var1 != var2) {
+      print(paste("Generating plot for:", var1, "and", var2))
+      p <- plot_chisquare_histogram(thyroid_diff, var1, var2)
+      print(p)
+    }
+  }
+}
+
+```
+-------------------------------------------------------------------------
+### Regression Tree
+```{r}
+summary(thyroid)
+```
+```{r}
+vnames=c("Age","Gender","Smoking","Hx.Smoking","Hx.Radiothreapy", 
+         "Thyroid.Function", "Physical.Examination", "Adenopathy", "Pathology", 
+         "Focality", "Risk", "T", "N", "M", "Stage", "Response","Recurred")
+
+```
+
+```{r}
+mydat=thyroid
+library(ggplot2)
+ggplot(traindat, aes(x = Recurred)) + geom_bar()
+```
+mari membuat model decision tree
+```{r}
+# Perform grid search for minsplit and maxdepth
+library(caret)
+
+# Define the grid of parameters to tune
+grid <- expand.grid(minsplit = c(10, 20, 30), maxdepth = c(5, 10, 15))
+
+# Function to train and evaluate models with different parameters
+tune_tree <- function(minsplit, maxdepth) {
+  tree <- rpart(Recurred ~ ., data = traindat, method = "class",
+                control = rpart.control(minsplit = minsplit, maxdepth = maxdepth, cp = 0.01))
+  # Use cross-validation to evaluate
+  cv_result <- printcp(tree)
+  return(tree$cptable[which.min(tree$cptable[, "xerror"]), "xerror"])
+}
+
+# Apply grid search
+results <- apply(grid, 1, function(params) tune_tree(params[1], params[2]))
+best_params <- grid[which.min(results), ]
+
+# Identify the best parameters
+best_params <- grid[which.min(results), ]
+cat("Best Parameters: minsplit =", best_params$minsplit, ", maxdepth =", best_params$maxdepth, "\n")
+library(rpart)
+best_minsplit <- 10    # Replace with your optimal minsplit value
+best_maxdepth <- 5     # Replace with your optimal maxdepth value
+
+# Build the decision tree with tuned parameters
+final_tree <- rpart(Recurred ~ ., 
+                    data = traindat, 
+                    method = "class", 
+                    control = rpart.control(minsplit = best_minsplit, maxdepth = best_maxdepth, cp = 0.01))
+
+# View the tree structure
+print(final_tree)
+par(mar = c(1, 1, 1, 1)) # Adjust margins
+plot(final_tree, uniform = TRUE, margin = 0.05)
+text(final_tree, use.n = TRUE, cex = 0.8)
+
+```
+
+```{r}
+set.seed(123)
+predictions <- predict(final_tree, testdat, type = "class")
+confusion_matrix <- table(testdat$Recurred, predictions)
+accuracy <- sum(diag(confusion_matrix)) / sum(confusion_matrix)
+confusion_matrix
+accuracy
+```
+```{r}
+# Assuming 'confusion_matrix' contains your table
+confusion_matrix <- table(testdat$Recurred, predictions)
+
+# Extract values from the confusion matrix
+TP <- confusion_matrix[2, 2]  # True Positives
+FP <- confusion_matrix[1, 2]  # False Positives
+FN <- confusion_matrix[2, 1]  # False Negatives
+TN <- confusion_matrix[1, 1]  # True Negatives
+
+# Calculate precision, recall, and F1-score
+precision <- TP / (TP + FP)  # Precision
+recall <- TP / (TP + FN)     # Recall
+f1_score <- 2* (precision * recall) / (precision + recall)  # F1-score
+
+# Print results
+cat("Precision: ", precision, "\n")
+cat("Recall: ", recall, "\n")
+cat("F1-score: ", f1_score, "\n")
+```
+```{r}
+# Load necessary libraries
+library(ggplot2)
+library(reshape2)
+
+# Assuming `confusion_matrix` is already created as a table
+# Convert the confusion matrix into a data frame for ggplot
+conf_matrix_df <- as.data.frame(as.table(confusion_matrix))
+colnames(conf_matrix_df) <- c("Actual", "Predicted", "Frequency")
+
+# Create a heatmap of the confusion matrix
+confusion_matrix_plot <- ggplot(conf_matrix_df, aes(x = Predicted, y = Actual, fill = Frequency)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = Frequency), color = "black", size = 5) +
+  scale_fill_gradient(low = "lightblue", high = "darkblue") +
+  labs(
+    title = "Confusion Matrix Heatmap",
+    x = "Predicted Class",
+    y = "Actual Class",
+    fill = "Frequency"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.y = element_text(vjust = 0.5)
+  )
+
+# Print the confusion matrix plot
+print(confusion_matrix_plot)
+```
+accuracy 94%
+## Random Forest
+
+Kita akan mencoba menggunakan random forest
+```{r}
+set.seed(123)
+forest <- randomForest(Recurred~., data= traindat, proximity= TRUE ) #proximity= TRUE untuk return proximity matrix. digunakan untuk cluster samples
+forest
+plot(forest)
+```
+
+Kita akan melihat apakah 500 trees cukup untuk classification optimal dengan meng-plot error rates
+```{r}
+oob.error.data <- data.frame(
+  Trees= rep(1:nrow(forest$err.rate), times=3),
+  Type= rep(c("OOB", "Yes", "No"), each= nrow(forest$err.rate)),
+  Error= c(forest$err.rate[,"OOB"], 
+           forest$err.rate[,"Yes"],
+           forest$err.rate[,"No"])
+  ) 
+
+ggplot(data= oob.error.data, aes(x=Trees, y= Error)) + geom_line(aes(color= Type))
+```
+Garis biru menunjukkan error rate saat mengklasifikasi "Yes"
+Garis Hijau menunjukkan overall OOB error rate
+Garis merah menunjukkan error rate saat mengklasifikasi "No"
+Kita bisa melihat bahwa error rate turun saat Trees semakin banyak
+
+Mari kita cek apakah kita butuh lebih banyak Trees
+```{r}
+forestcek <- randomForest(Recurred~., data= traindat, ntree=1000, proximity= TRUE )
+forestcek
+```
+Terlihat bahwa menambah Tree tidak terlalu membantu karena OOB error rate tetap sama 3.27% dan confusion matrix lebih kurang tetap sama.
+
+Kita juga bisa meng-plot error rate seperti sebelumnya
+```{r}
+oob.error.data2 <- data.frame(
+  Trees2= rep(1:nrow(forestcek$err.rate), times=3),
+  Type2= rep(c("OOB", "Yes", "No"), each= nrow(forestcek$err.rate)),
+  Error2= c(forestcek$err.rate[,"OOB"], 
+           forestcek$err.rate[,"Yes"],
+           forestcek$err.rate[,"No"])
+  ) 
+
+ggplot(data= oob.error.data2, aes(x=Trees2, y= Error2)) + geom_line(aes(color= Type2))
+```
+Terlihat bahwa error rate mulai stabil setelah 500 Trees. Dengan melakukan plot grafik error diatas kita jadi tau bahwa 500 Trees sudah cukup menambahkan lagi tidak akan ada efek.
+
+Sekarang kita akan cek jumlah variabel yang optimal pada setiap internal node dalam tree
+Pertama kita membuat vektor kosong yang memuat 10 value
+Lalu membuat loop yang mengetes setiap variabel in every step
+Kita akan mengetes n variabel in every step
+```{r}
+oob.values <- vector(length= 10)
+for (i in 1:10) {
+  temp.model <- randomForest(Recurred~., data= traindat, mtry=i, ntree=1000)
+  oob.values[i] <- temp.model$err.rate[nrow(temp.model$err.rate),1]
+}
+oob.values
+```
+Terlihat bahwa value ke-4 yaitu mtry=4 memiliki error rate terkecil. Artinya default sudah menggunakan jumlah var yang optimal
+
+Terakhir kita akan menggunakan random forest untuk membuat MDS plot dengan samples, ini akan menunjukkan bagaimana mereka related satu sama lain
+```{r}
+distance.matrix <- dist(1-forest$proximity)
+mds.stuff <- cmdscale(distance.matrix, eig= TRUE, x.ret = TRUE)
+mds.var.per <- round(mds.stuff$eig/sum(mds.stuff$eig)*100,1)
+
+mds.values <- mds.stuff$points
+mds.data <- data.frame(Sample= rownames(mds.values),
+                       X= mds.values[,1],
+                       Y= mds.values[,2],
+                       Status= traindat$Recurred)
+
+ggplot(data= mds.data, aes(x=X, y=Y, label= Sample))+
+  geom_text(aes(color= Status))+
+  theme_bw() +
+  xlab(paste("MDS1 -", mds.var.per[1], "%", sep=""))+
+  ylab(paste("MDS2 -", mds.var.per[2], "%", sep=""))+
+  ggtitle("MDS plot using(1 - Random Forest Proximities)")
+```
+Selanjutnya, kita akan melakukan prediksi pada testdata
+```{r}
+predictions2 <- predict(forest, newdata= testdat, type = "class")
+confusion_matrix2 <- table(testdat$Recurred, predictions2)
+confusion_matrix2
+```
+Matrix prediction vs actual menunjukkan bahwa prediksi banyak yang benar
+
+Untuk mengevaluasi model random forest kita lebih lanjut, kita akan menghitung akurasi
+```{r}
+accuracy2 <- sum(diag(confusion_matrix2)) / sum(confusion_matrix2)
+accuracy2
+```
+Accuracy cukup tinggi sehingga model random forest sudah sangat baik dalam forecasting 
+Additionally
+Kita bisa melihat variabel mana saja yang paling berpengaruh
+```{r}
+var.imp <- importance(forest)
+var.imp
+```
+
+```{r}
+order(importance(forest)) #lowest to highest
+importance(forest)[rank(importance(forest)),]
+```
+```{r}
+var.imp.df <- data.frame(Variabel= rownames(var.imp), Importance= var.imp[,"MeanDecreaseGini"])
+var.imp.df <- var.imp.df[order(var.imp.df$Importance, decreasing = TRUE),]
+
+ggplot(var.imp.df, aes(x = reorder(Variabel, Importance), y = Importance)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  coord_flip() +
+  labs(
+    title = "Variable Importance Plot",
+    x = "Variabel",
+    y = "Importance (Mean Decrease Gini)"
+  ) +
+  theme_minimal()
+
+```
+Terlihat variabel paling berpengaruh adalah "Risk", diikuti oleh "Hx.Radiothreapy", "Hx.Smoking", "Gender", dst... 
+
+
+Bayes
+```{r}
+# Step 1: Install and load e1071 package
+library(e1071)
+
+# Step 2: Prepare the data
+traindat$Recurred <- as.factor(traindat$Recurred)
+
+# Step 3: Train the Naive Bayes model
+nb_model <- naiveBayes(Recurred ~ ., data = traindat)
+
+# Print the Naive Bayes model summary
+print(nb_model)
+
+# Step 4: Make predictions on the test set
+nb_predictions <- predict(nb_model, newdata = testdat)
+
+# Convert predictions and actual values to factors with the same levels
+nb_predictions <- factor(nb_predictions, levels = levels(testdat$Recurred))
+testdat$Recurred <- factor(testdat$Recurred)
+
+# Generate the confusion matrix
+# Align levels between predictions and actual values
+common_levels <- union(levels(nb_predictions), levels(testdat$Recurred))
+nb_predictions <- factor(nb_predictions, levels = common_levels)
+testdat$Recurred <- factor(testdat$Recurred, levels = common_levels)
+
+# Remove unused levels if necessary
+nb_predictions <- droplevels(nb_predictions)
+testdat$Recurred <- droplevels(testdat$Recurred)
+
+# Generate confusion matrix
+library(caret)
+conf_matrix1 <- confusionMatrix(nb_predictions, testdat$Recurred)
+
+# Print the confusion matrix
+print(conf_matrix1)
+
+
+# Step 6: Print model accuracy
+cat("Accuracy: ", conf_matrix1$overall["Accuracy"], "\n")
+
+# Optional: Plot the confusion matrix
+# Assuming conf_matrix is generated
+cm_table <- conf_matrix1$table
+
+# Convert to a data frame
+cm_df <- as.data.frame(as.table(cm_table))
+colnames(cm_df) <- c("Actual", "Predicted", "Frequency")
+
+# Plot using ggplot2
+library(ggplot2)
+
+ggplot(cm_df, aes(x = Predicted, y = Actual, fill = Frequency)) +
+  geom_tile(color = "white") +  # Create the heatmap tiles
+  geom_text(aes(label = Frequency), color = "black", size = 5) +  # Add text labels
+  scale_fill_gradient(low = "white", high = "blue") +  # Define the color gradient
+  theme_minimal() +
+  labs(
+    title = "Confusion Matrix Heatmap",
+    x = "Predicted",
+    y = "Actual"
+  )
+print(conf_matrix1)
+```
+```{r}
+library(caret)
+
+# Assuming conf_matrix1 is already created
+# Extract precision, recall, and F1-score for the positive class
+precision <- conf_matrix1$byClass["Pos Pred Value"]  # Precision
+recall <- conf_matrix1$byClass["Sensitivity"]        # Recall
+f1_score <- conf_matrix1$byClass["F1"]               # F1-score (if available)
+
+# Print the results
+cat("Precision: ", precision, "\n")
+cat("Recall: ", recall, "\n")
+cat("F1-Score: ", f1_score, "\n")
+```
