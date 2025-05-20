@@ -465,6 +465,207 @@ ggplot(var.imp.df, aes(x = reorder(Variabel, Importance), y = Importance)) +
   theme_minimal()
 
 ```
+XGBoost
+```{r}
+# ===============================
+# 1. Load Libraries & Install if Needed
+# ===============================
+if (!require("xgboost")) install.packages("xgboost")
+if (!require("caret")) install.packages("caret")
+if (!require("Matrix")) install.packages("Matrix")
+if (!require("ggplot2")) install.packages("ggplot2")
+
+library(xgboost)
+library(caret)
+library(Matrix)
+library(ggplot2)
+
+# ===============================
+# 2. Prepare Data
+# ===============================
+# Make sure 'Recurred' is a factor with levels "No" and "Yes"
+traindat$Recurred <- factor(traindat$Recurred, levels = c("No", "Yes"))
+testdat$Recurred <- factor(testdat$Recurred, levels = c("No", "Yes"))
+
+# Convert target to numeric (Yes = 1, No = 0)
+traindat$Recurred_num <- ifelse(traindat$Recurred == "Yes", 1, 0)
+testdat$Recurred_num <- ifelse(testdat$Recurred == "Yes", 1, 0)
+
+# Create sparse matrices for predictors
+X_train <- sparse.model.matrix(Recurred_num ~ . -Recurred, data = traindat)
+y_train <- traindat$Recurred_num
+
+X_test <- sparse.model.matrix(Recurred_num ~ . -Recurred, data = testdat)
+y_test <- testdat$Recurred_num
+
+dtrain <- xgb.DMatrix(data = X_train, label = y_train)
+dtest <- xgb.DMatrix(data = X_test, label = y_test)
+
+# ===============================
+# 3. Train XGBoost Model
+# ===============================
+params <- list(
+  objective = "binary:logistic",
+  eval_metric = "logloss",
+  max_depth = 4,
+  eta = 0.1,
+  subsample = 0.8,
+  colsample_bytree = 0.8
+)
+
+xgb_model <- xgb.train(
+  params = params,
+  data = dtrain,
+  nrounds = 100,
+  watchlist = list(train = dtrain),
+  verbose = 0
+)
+
+# ===============================
+# 4. Make Predictions
+# ===============================
+# Predictions on the test set
+pred_probs <- predict(xgb_model, dtest)
+pred_labels_test <- ifelse(pred_probs > 0.5, 1, 0)
+
+# ===============================
+# 5. Evaluate Model on Test Set
+# ===============================
+conf_mat_test <- confusionMatrix(factor(pred_labels_test), factor(y_test), positive = "1")
+print(conf_mat_test)
+
+# Print performance metrics for the test set
+cat("\nTest Set Accuracy:", round(conf_mat_test$overall["Accuracy"], 3))
+cat("\nTest Set Precision:", round(conf_mat_test$byClass["Precision"], 3))
+cat("\nTest Set Recall:", round(conf_mat_test$byClass["Recall"], 3))
+cat("\nTest Set F1 Score:", round(conf_mat_test$byClass["F1"], 3), "\n")
+
+# ===============================
+# 6. Create Confusion Matrix for Training Data
+# ===============================
+# Predictions on the training set
+pred_probs_train <- predict(xgb_model, dtrain)
+pred_labels_train <- ifelse(pred_probs_train > 0.5, 1, 0)
+
+# Generate confusion matrix for training set
+conf_mat_train <- confusionMatrix(factor(pred_labels_train), factor(y_train), positive = "1")
+print(conf_mat_train)
+
+# Print performance metrics for the training set
+cat("\nTraining Set Accuracy:", round(conf_mat_train$overall["Accuracy"], 3))
+cat("\nTraining Set Precision:", round(conf_mat_train$byClass["Precision"], 3))
+cat("\nTraining Set Recall:", round(conf_mat_train$byClass["Recall"], 3))
+cat("\nTraining Set F1 Score:", round(conf_mat_train$byClass["F1"], 3), "\n")
+
+# ===============================
+# 7. Confusion Matrix Heatmap for Training Data
+# ===============================
+# Convert the confusion matrix for training data to a data frame for ggplot
+cm_train <- as.table(conf_mat_train$table)
+
+# Rename columns to match ggplot aesthetics
+colnames(cm_train) <- c("No", "Yes")
+rownames(cm_train) <- c(" No", "Yes")
+
+# Convert the confusion matrix into a data frame for ggplot
+cm_df_train <- as.data.frame(as.table(cm_train))
+
+# Rename columns to match ggplot aesthetics (Var1 and Var2 are default names)
+colnames(cm_df_train) <- c("Actual", "Predicted", "Frequency")
+
+# Plotting the confusion matrix as a heatmap for the training set
+confusion_matrix_plot_train <- ggplot(cm_df_train, aes(x = Predicted, y = Actual, fill = Frequency)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = Frequency), color = "white", size = 5) +
+  scale_fill_gradient(low = "lightblue", high = "darkblue") +
+  labs(
+    title = "XGBoost: Training vs Actual (Training)",
+    x = "Predicted",
+    y = "Actual",
+    fill = "Value"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.y = element_text(vjust = 0.5),
+    plot.title = element_text(hjust = 0.5)  # Center the title
+  )
+
+# Display the plot
+print(confusion_matrix_plot_train)
+
+
+
+# ===============================
+# Confusion Matrix for Test Data
+# ===============================
+
+# ===============================
+# Confusion Matrix for Test Data
+# ===============================
+# Corrected: use pred_labels_test (not pred_labels)
+conf_mat_test <- confusionMatrix(factor(pred_labels_test), factor(y_test), positive = "1")
+print(conf_mat_test)
+
+# Convert the confusion matrix for test data to a data frame for ggplot
+cm_test <- as.table(conf_mat_test$table)
+
+# Rename columns to match ggplot aesthetics
+colnames(cm_test) <- c(" No", "Yes")
+rownames(cm_test) <- c("No", "Yes")
+
+# Convert the confusion matrix into a data frame for ggplot
+cm_df_test <- as.data.frame(as.table(cm_test))
+
+# Rename columns to match ggplot aesthetics (Var1 and Var2 are default names)
+colnames(cm_df_test) <- c("Actual", "Predicted", "Frequency")
+
+# Plotting the confusion matrix as a heatmap for the test set
+confusion_matrix_plot_test <- ggplot(cm_df_test, aes(x = Predicted, y = Actual, fill = Frequency)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = Frequency), color = "white", size = 5) +
+  scale_fill_gradient(low = "lightblue", high = "darkblue") +
+  labs(
+    title = "XGBoost: Test vs Actual (Testing)",
+    x = "Predicted",
+    y = "Actual",
+    fill = "Value"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.y = element_text(vjust = 0.5),
+    plot.title = element_text(hjust = 0.5)  # Center the title
+  )
+
+# Display the plot
+print(confusion_matrix_plot_test)
+
+# Extract metrics for training
+train_acc <- round(conf_mat_train$overall["Accuracy"], 3)
+train_prec <- round(conf_mat_train$byClass["Precision"], 3)
+train_rec <- round(conf_mat_train$byClass["Recall"], 3)
+train_f1 <- round(conf_mat_train$byClass["F1"], 3)
+
+# Extract metrics for testing
+test_acc <- round(conf_mat_test$overall["Accuracy"], 3)
+test_prec <- round(conf_mat_test$byClass["Precision"], 3)
+test_rec <- round(conf_mat_test$byClass["Recall"], 3)
+test_f1 <- round(conf_mat_test$byClass["F1"], 3)
+
+# Create a summary data frame
+performance_summary <- data.frame(
+  Dataset = c("Training", "Testing"),
+  Accuracy = c(train_acc, test_acc),
+  Precision = c(train_prec, test_prec),
+  Recall = c(train_rec, test_rec),
+  F1_Score = c(train_f1, test_f1)
+)
+
+# Print the summary
+print(performance_summary)
+
+
 
 
 Bayes
@@ -545,4 +746,144 @@ f1_score <- conf_matrix1$byClass["F1"]               # F1-score (if available)
 cat("Precision: ", precision, "\n")
 cat("Recall: ", recall, "\n")
 cat("F1-Score: ", f1_score, "\n")
+```
+Multi-Layer Perceptron (MLP) neural
+```{r}
+# ===============================
+# 1. Install & Load Libraries
+# ===============================
+library(nnet)
+library(caret)
+library(ggplot2)
+
+# ===============================
+# 2. Prepare Data
+# ===============================
+traindat$Recurred_num <- ifelse(traindat$Recurred == "Yes", 1, 0)
+testdat$Recurred_num <- ifelse(testdat$Recurred == "Yes", 1, 0)
+
+train_x <- model.matrix(~ . - Recurred - Recurred_num, data = traindat)[, -1]
+test_x  <- model.matrix(~ . - Recurred - Recurred_num, data = testdat)[, -1]
+
+train_x <- scale(train_x)
+test_x <- scale(test_x)
+
+train_x[is.na(train_x)] <- 0
+test_x[is.na(test_x)] <- 0
+
+train_y <- factor(ifelse(traindat$Recurred_num == 1, "Yes", "No"))
+test_y  <- factor(ifelse(testdat$Recurred_num == 1, "Yes", "No"))
+
+# ===============================
+# 3. Train MLP with Repeated Cross-Validation (Caret)
+# ===============================
+set.seed(123)
+
+control <- trainControl(
+  method = "repeatedcv",   # Changed from cv to repeatedcv
+  number = 5,
+  repeats = 3,             # Repeats 5-fold CV 3 times
+  sampling = "up",         # Still handling class imbalance
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary
+)
+
+grid <- expand.grid(
+  size = c(1, 2, 3),       # Smaller networks to prevent overfitting
+  decay = c(0.1, 0.5, 1)   # Stronger regularization
+)
+
+mlp_cv <- train(
+  x = train_x,
+  y = train_y,
+  method = "nnet",
+  trControl = control,
+  tuneGrid = grid,
+  metric = "ROC",
+  linout = FALSE,
+  trace = FALSE,
+  maxit = 200
+)
+
+print(mlp_cv)
+
+# ===============================
+# 4. Predict & Evaluate (Test Set)
+# ===============================
+pred_probs <- predict(mlp_cv, newdata = test_x, type = "prob")
+
+threshold <- 0.5
+pred_labels <- ifelse(pred_probs[,"Yes"] > threshold, "Yes", "No")
+pred_labels <- factor(pred_labels, levels = c("No", "Yes"))
+
+conf_mat <- confusionMatrix(pred_labels, test_y, positive = "Yes")
+print(conf_mat)
+
+cat("\nAccuracy:", round(conf_mat$overall["Accuracy"], 3))
+cat("\nPrecision:", round(conf_mat$byClass["Precision"], 3))
+cat("\nRecall:", round(conf_mat$byClass["Recall"], 3))
+cat("\nF1 Score:", round(conf_mat$byClass["F1"], 3), "\n")
+
+# ===============================
+# 5. Confusion Matrix Heatmap
+# ===============================
+conf_matrix_df <- as.data.frame(conf_mat$table)
+colnames(conf_matrix_df) <- c("Actual", "Predicted", "Frequency")
+
+ggplot(conf_matrix_df, aes(x = Predicted, y = Actual, fill = Frequency)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = Frequency), color = "white", size = 5) +
+  scale_fill_gradient(low = "lightblue", high = "darkblue") +
+  labs(
+    title = "Confusion Matrix: Neural Network (Testing)",
+    x = "Predicted",
+    y = "Actual",
+    fill = "Frequency"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.y = element_text(vjust = 0.5),
+    plot.title = element_text(hjust = 0.5)
+  )
+# ===============================
+# 6. Predict & Evaluate (Training Set)
+# ===============================
+train_probs <- predict(mlp_cv, newdata = train_x, type = "prob")
+
+train_pred <- ifelse(train_probs[,"Yes"] > threshold, "Yes", "No")
+train_pred <- factor(train_pred, levels = c("No", "Yes"))
+
+train_conf_mat <- confusionMatrix(train_pred, train_y, positive = "Yes")
+print(train_conf_mat)
+
+cat("\n[TRAINING SET]")
+cat("\nAccuracy:", round(train_conf_mat$overall["Accuracy"], 3))
+cat("\nPrecision:", round(train_conf_mat$byClass["Precision"], 3))
+cat("\nRecall:", round(train_conf_mat$byClass["Recall"], 3))
+cat("\nF1 Score:", round(train_conf_mat$byClass["F1"], 3), "\n")
+
+# ===============================
+# 7. Confusion Matrix Heatmap (Training Set)
+# ===============================
+train_conf_df <- as.data.frame(train_conf_mat$table)
+colnames(train_conf_df) <- c("Actual", "Predicted", "Frequency")
+
+ggplot(train_conf_df, aes(x = Predicted, y = Actual, fill = Frequency)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = Frequency), color = "white", size = 5) +
+  scale_fill_gradient(low = "lightblue", high = "darkblue") +
+  labs(
+    title = "Confusion Matrix: Neural Network (Training)",
+    x = "Predicted",
+    y = "Actual",
+    fill = "Frequency"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.y = element_text(vjust = 0.5),
+    plot.title = element_text(hjust = 0.5)
+  )
+
 ```
